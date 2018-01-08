@@ -1,0 +1,4 @@
+2
+sobel 7.pgm 7-s.pgm
+mean_removal 7.pgm 7-m.pgm
+
