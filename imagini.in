@@ -1,4 +1,6 @@
-2
-sobel 7.pgm 7-s.pgm
-mean_removal 7.pgm 7-m.pgm
+4
+sobel 1.pgm 1-s.pgm
+mean_removal 1.pgm 1-m.pgm
+sobel 2.pgm 2-s.pgm
+mean_removal 2.pgm 2-m.pgm
 
