@@ -3,7 +3,7 @@
 	APD, Tema 3, 2017-2018
 
 	Compile:
-		mpic++ src.cpp -o filter -Wall
+		mpic++ src.cpp -o filtru -Wall
 	Run:
 		mpirun -np 12 filtru topologie1.in imagini.in statistica.out
 		or
@@ -97,7 +97,6 @@ int main(int argc, char * argv[]) {
 					topo[nr] = 1;
 					token = strtok(NULL, sep);
 				}
-
 				break;
 			} else {
 				count++;
