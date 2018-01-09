@@ -1,6 +1,6 @@
 all:build
 
 build:src.cpp
-	mpic++ src.cpp -o filtru -Wall
+	mpic++ src.cpp -o filter -Wall
 clean:
-	rm filtru
+	rm filter

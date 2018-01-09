@@ -1,19 +1,19 @@
 /*
-	Author: Dosaru Daniel-Florin 331CA
-	APD, Tema 3, 2017-2018
+	Author: Dosaru Daniel-Florin, Group 331CA
+	APD, Homework project number 3, University year 2017-2018
 
 	Compile:
-		mpic++ src.cpp -o filtru -Wall
+		mpic++ src.cpp -o filter -Wall
 	Run:
-		mpirun -np 12 filtru topologie1.in imagini.in statistica.out
+		mpirun -np 12 filter topology1.in images.in statistics.out
 		or
-		mpirun -np 29 filtru topologie2.in imagini.in statistica.out
+		mpirun -np 29 filter topology2.in images.in statistics.out
+
 */
 
 #include<mpi.h>
 #include<stdio.h>
 #include<stdlib.h>
-#include<string.h>
 #include<string>
 #include<iostream>
 #include<fstream>
@@ -31,7 +31,6 @@
 
 using namespace std;
 
-// Allocate continously memory for images
 int** my_alloc(int m, int n) {
 	int *continue_space = (int *) malloc (m*n*sizeof(int));
 	if (continue_space == NULL) {
@@ -66,13 +65,13 @@ int main(int argc, char * argv[]) {
 		fprintf(stderr, "Out of memory at topo");
 	}
 
-	// stat[i] = number of lines that had been processed by node i
+	// stat[i] = number of pixel lines processed by node i
 	int * stat = (int *)malloc(nProcesses * sizeof(int));
 	if (stat == NULL) {
-		fprintf(stderr, "Out of memory at topo");
+		fprintf(stderr, "Out of memory at stat");
 	}
 
-	// initial values for topology, parent and stat array
+	// initial values for topology array and parent array
 	for (int i = 0; i < nProcesses; i++){
 		topo[i] = 0;
 		stat[i] = 0;
@@ -82,50 +81,47 @@ int main(int argc, char * argv[]) {
 	const char sep[2] = " ";
 	char *token;
 
-	if (rank == 0) { // only the leader of the network executes this:
-		//reading only the rank th line from topology file
-		FILE *f_topo = fopen(argv[1], "r");
-		int count = 0;
-		char line[LINE_MAX_LENGTH];
+	// reading topology
+	FILE *f_topo = fopen(argv[1], "r");
+	int count = 0;
+	char line[LINE_MAX_LENGTH];
 
-		while (fgets(line, sizeof(line), f_topo) != NULL) {
-			if (count == rank) {
-				token = strtok(line, sep); // I already know that this is "rank: "  
+	while (fgets(line, sizeof(line), f_topo) != NULL) {
+		if (count == rank) {
+			token = strtok(line, sep); // "rank: "  
+			token = strtok(NULL, sep);
+			while( token != NULL ) {
+				int nr = atoi(token);
+				topo[nr] = 1;
 				token = strtok(NULL, sep);
-				while( token != NULL ) {
-					int nr = atoi(token);
-					topo[nr] = 1;
-					token = strtok(NULL, sep);
-				}
-				break;
-			} else {
-				count++;
 			}
+			break;
+		} else {
+			count++;
 		}
+	}
+	fclose(f_topo);
 
-		fclose(f_topo);
-
+	if (rank == 0) {
 		vector<int> kids;
 		for (int i = 0; i < nProcesses; ++i) {
 			if (topo[i] == 1) {
 				kids.push_back(i);
 			}
 		}
-
 		ifstream infile(argv[2]);
 		ofstream outfile(argv[3]);
 		int nr_tests = 0;
 		infile >> nr_tests;
-		
-		// Sending the number of images that will be processed by the network
+
 		for (int i = 0; i < (int)kids.size(); ++i) {
 			MPI_Send(&nr_tests, 1, MPI_INT, kids[i], NR_TEST_TAG, MPI_COMM_WORLD);
 		}
 
 		for (int k = 0; k < nr_tests; k++) {
-			printf("Photo number %d:\n", k+1);
+			printf("Next photo: %d\n", k+1);
 			string type, img_in, img_out, inputLine = "";
-
+			// Parsing pgm file
 			int i = 0, j = 0, H = 0, W = 0, maxValue, info_img[3];
 			stringstream ss;
 			infile >> type >> img_in >> img_out;
@@ -136,24 +132,25 @@ int main(int argc, char * argv[]) {
 
 			getline(in_f_img, inputLine);
 			if(inputLine.compare("P2") != 0)
-				cerr << "Version error, this is not a image exported with GIMP" << endl;
+				cerr << "Version error" << endl;
+			fprintf(out_f_img, "%s\n", inputLine.c_str());
+			getline(in_f_img, inputLine); // comment line
+			fprintf(out_f_img, "%s\n", inputLine.c_str());
 
-			fprintf(out_f_img, "%s\n", inputLine.c_str());
-			getline(in_f_img, inputLine); // comment
-			fprintf(out_f_img, "%s\n", inputLine.c_str());
 			ss << in_f_img.rdbuf();
 			ss >> W >> H;
 			fprintf(out_f_img, "%d %d\n", W, H);
 
-			ss >> maxValue; // pure white of a pixel
+			ss >> maxValue;
 			fprintf(out_f_img, "%d\n", maxValue);
 
-			info_img[1] = W + 2; // number of columns of a line + adding 2 zeros
+			info_img[1] = W + 2; // number of columns of one line + two zeros
 			info_img[2] = maxValue;
 
 			for (int i = 0; i < (int)kids.size(); ++i) {
+				 // last kid
 				if (i == (int)kids.size() - 1) {
-					info_img[0] = H / kids.size() + 2 + H % kids.size(); // last kid
+					info_img[0] = H / kids.size() + 2 + H % kids.size();
 				} else {
 					info_img[0] = H / kids.size() + 2;
 				}
@@ -171,7 +168,7 @@ int main(int argc, char * argv[]) {
 			}
 			printf("Done.\n");
 			in_f_img.close();
-			
+
 			printf("Processing image number %d......... ", k+1);
 			int tag = ERROR_TAG;
 			if (type.compare("sobel") == 0) {
@@ -179,32 +176,31 @@ int main(int argc, char * argv[]) {
 			} else if (type.compare("mean_removal") == 0) {
 				tag = MEANR_TAG;
 			} else {
-				fprintf(stderr, "Eu, %d, nu recunosc acest tip de filtru. ", rank);
+				fprintf(stderr, "Me, %d, can not recognize this type of filter. ", rank);
 			}
-
-			if (kids.size() == 1) { // I have only one kid, I will send him the entire image
+			// I got only one kid, I will send him the entire image
+			if (kids.size() == 1) {
 				MPI_Send(m[0], (H + 2) * (W + 2), MPI_INT, kids[0], tag, MPI_COMM_WORLD);
 			} else {
 				for (int i = 0; i < (int)kids.size(); i++) {
-					if (i == (int)kids.size() - 1) { // last kid
+					// last kid
+					if (i == (int)kids.size() - 1) {
 						MPI_Send(m[i * ((int)H/kids.size())], 
 								((int)H / kids.size() + 2 + H % kids.size()) * (W + 2), 
 								MPI_INT, kids[i], tag, MPI_COMM_WORLD);
-					} else {// other kids
+					} else {
 						MPI_Send(m[i * ((int)H/kids.size())],
 							((int)H / kids.size() + 2) * (W + 2), MPI_INT, kids[i], tag, MPI_COMM_WORLD);
 					}
 				}
 			}
-
 			free(m[0]);
 			free(m);
-
 			int** mNew = my_alloc(H, W);
 
-			// Receiving and join the result(s) from my kids
 			for (int i = 0; i < (int)kids.size(); i++) {
-				if (i == (int)kids.size() - 1) { // last kid
+				// last kid
+				if (i == (int)kids.size() - 1) {
 					MPI_Recv(mNew[i * ((int)H/kids.size())], (((int)H / kids.size()) + H % kids.size())* W, 
 						MPI_INT, kids[i], RESULT_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 				} else {
@@ -214,14 +210,13 @@ int main(int argc, char * argv[]) {
 			}
 			printf("Done.\n");// Done processing message
 
-			printf("Writing results into a new file...");
+			printf("Writing results into a new file... ");
 			for(i = 0; i < H; ++i) {
 				for (j = 0; j < W; ++j) {
 					fprintf(out_f_img, "%d\n", mNew[i][j]);
 				}
 			}
-			printf(" Done.\n");
-			
+			printf("Done.\n");
 			free(mNew[0]);
 			free(mNew);
 			fclose(out_f_img);
@@ -229,10 +224,9 @@ int main(int argc, char * argv[]) {
 
 		infile.close();
 		outfile.close();
-		// Anounce that the work is done
-		int am_terminat = 1;
+		int finished = 1;
 		for (int i = 0; i < (int)kids.size(); ++i) {
-			MPI_Send(&am_terminat, 1, MPI_INT, kids[i], TERMINATION_TAG, MPI_COMM_WORLD);
+			MPI_Send(&finished, 1, MPI_INT, kids[i], TERMINATION_TAG, MPI_COMM_WORLD);
 		}
 
 		int * statRcv = (int *) malloc(nProcesses* sizeof(int));
@@ -241,50 +235,25 @@ int main(int argc, char * argv[]) {
 						kids[i], TERMINATION_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 			for (int i = 0; i < nProcesses; ++i) {
 				if (statRcv[i] > 0) {
-					stat[i] = statRcv[i];
+					stat[i] = statRcv[i]; 
 				}
 			}
 		}
 		free(statRcv);
 		FILE * f_stat = fopen(argv[3], "w");
-		// write in statistica.out:
+		// write in statistics.out the lines processed
 		for (int i = 0; i < nProcesses; ++i) {
 			fprintf(f_stat, "%d: %d\n", i, stat[i]); 
 		}
 		fclose(f_stat);
-
 	} else {
-		int nr_neigh = 0;
-		FILE *f_topo = fopen(argv[1], "r");
-		int count = 0;
-		char line[LINE_MAX_LENGTH];
-		while (fgets(line, sizeof(line), f_topo) != NULL) {
-			if (count == rank) {
-				token = strtok(line, sep); // "rank: "  
-				token = strtok(NULL, sep);
-
-				while( token != NULL ) {
-					int nr = atoi(token);
-					topo[nr] = 1;
-					nr_neigh++;
-					token = strtok(NULL, sep);
-				}
-				break;
-			} else {
-				count++;
-			}
-		}
-		fclose(f_topo);
-
-		// primirea numarul de imagini care vor fi procesate
 		int nr_tests = 0;
 		MPI_Status my_status;
 		MPI_Recv(&nr_tests, 1, MPI_INT, MPI_ANY_SOURCE, NR_TEST_TAG, MPI_COMM_WORLD, &my_status);
 		if (parent[rank] == -1) {
 			parent[rank] = my_status.MPI_SOURCE;
 		} else {
-			fprintf(stderr, "Me, %d th process, I already had a parent node \
-					when I got this message from you, %d", rank, my_status.MPI_SOURCE);
+			fprintf(stderr, "Eu, %d, aveam deja parinte când am primit de la %d.", rank, my_status.MPI_SOURCE);
 		}
 
 		vector<int> kids;
@@ -314,6 +283,7 @@ int main(int argc, char * argv[]) {
 						if (i < (int)kids.size() - 1) {
 							info_img[0] = (int)H / kids.size() + 2;
 						} else {
+							// last kid
 							info_img[0] = (int) H / kids.size() + 2 + H % kids.size();
 						}
 						MPI_Send(info_img, 3, MPI_INT, kids[i], IMG_INFO_TAG, MPI_COMM_WORLD);
@@ -329,7 +299,6 @@ int main(int argc, char * argv[]) {
 			if (mNew == NULL) {
 				fprintf(stderr, "Out of memory!\n");
 			}
-
 			// receive pixels
 			MPI_Status stat_filter;
 			MPI_Recv(m[0], (H+2) * (W+2), 
@@ -337,17 +306,16 @@ int main(int argc, char * argv[]) {
 			int tag = stat_filter.MPI_TAG;
 
 			if (kids.size() > 0) {
-				if (kids.size() == 1) { // I have only one kid, I will send him the entire image
+				if (kids.size() == 1) {
 					MPI_Send(m[0], (H+2) * (W+2), 
 						MPI_INT, kids[0], tag, MPI_COMM_WORLD);
-					// Receiving the processed image
 					MPI_Recv(mNew[0], H * W, 
 						MPI_INT, kids[0], RESULT_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 					MPI_Send(mNew[0], H * W, 
 						MPI_INT, parent[rank], RESULT_TAG, MPI_COMM_WORLD);
-				} else { // this node (with more than one child) executes this:
+				} else {
 					for (int i = 0; i < (int)kids.size(); i++) {
-						if (i == (int)kids.size() - 1) { // last child
+						if (i == (int)kids.size() - 1) { // last kid
 							MPI_Send(m[i * ((int)H/kids.size())], (((int)H / kids.size()) + 2 + H % kids.size()) * (W+2), 
 									MPI_INT, kids[i], tag, MPI_COMM_WORLD);
 						} else {
@@ -356,9 +324,9 @@ int main(int argc, char * argv[]) {
 						}
 					}
 
-					// Receive and join the result(s) from my kids
+					// Receiving the result from this node's kids
 					for (int i = 0; i <  (int)kids.size(); i++) {
-						if (i ==  (int)kids.size() - 1) { // last child
+						if (i ==  (int)kids.size() - 1) { // last kid
 							MPI_Recv(mNew[i * ((int)H/kids.size())], (((int)H / kids.size()) + H % kids.size()) * W, 
 								MPI_INT, kids[i], RESULT_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 						} else {
@@ -366,11 +334,11 @@ int main(int argc, char * argv[]) {
 								MPI_INT, kids[i], RESULT_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 						}
 					}
-
-					// Send the result to my parent
+					// Sending the result to the parent
 					MPI_Send(mNew[0], H * W, MPI_INT, parent[rank], RESULT_TAG, MPI_COMM_WORLD);
 				}
-			} else { // This node is a leaf, applying the filter:
+			// leaf, applying the filter
+			} else {
 				if (tag == SOBEL_TAG) {
 					for(int i = 1; i < H+1; ++i) {
 						for (int j = 1; j < W+1; ++j) {
@@ -402,11 +370,10 @@ int main(int argc, char * argv[]) {
 						}
 					}
 				} else {
-					fprintf(stderr, "Error, unrecognised filter tag (%d) received by %d", tag, rank);
+					fprintf(stderr, "Error, unknown tag received: %d", tag);
 				}
 				stat[rank] += H;
 
-				// Send the result to my parent
 				MPI_Send(mNew[0], H * W, 
 					MPI_INT, parent[rank], RESULT_TAG, MPI_COMM_WORLD);
 			}
@@ -418,62 +385,18 @@ int main(int argc, char * argv[]) {
 
 		int finished = 0;
 		MPI_Recv(&finished, 1, MPI_INT, parent[rank], TERMINATION_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-
-		if (kids.size() == 0){ // leaf node
+		
+		if (kids.size() == 0){ // nod frunză {
 			MPI_Send(stat, nProcesses, MPI_INT, parent[rank], TERMINATION_TAG, MPI_COMM_WORLD);
-		} else {
-			int am_terminat = 1;
+		} else { // nod intermediar
+			int finished = 1;
 			for (int i = 0; i < (int)kids.size(); ++i) {
-				MPI_Send(&am_terminat, 1, MPI_INT, kids[i], TERMINATION_TAG, MPI_COMM_WORLD);
+				MPI_Send(&finished, 1, MPI_INT, kids[i], TERMINATION_TAG, MPI_COMM_WORLD);
 			}
 			int * statRcv = (int *) malloc(nProcesses* sizeof(int));
 			for (int i = 0; i < (int)kids.size(); ++i) {
 				MPI_Recv(statRcv, nProcesses, MPI_INT, 
 							kids[i], TERMINATION_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-			}
-			printf("Done.\n");// Done processing message
-
-			printf("Writing results into a new file...");
-			for(i = 0; i < H; ++i) {
-				for (j = 0; j < W; ++j) {
-					fprintf(out_f_img, "%d\n", mNew[i][j]);
-				}
-			}
-			printf(" Done.\n");
-			
-			free(mNew[0]);
-			free(mNew);
-			fclose(out_f_img);
-		}
-
-		infile.close();
-		outfile.close();
-		// Anounce that the work is done
-		int am_terminat = 1;
-		for (int i = 0; i < (int)kids.size(); ++i) {
-			MPI_Send(&am_terminat, 1, MPI_INT, kids[i], TERMINATION_TAG, MPI_COMM_WORLD);
-		}
-
-		int * statRcv = (int *) malloc(nProcesses* sizeof(int));
-		for (int i = 0; i < (int)kids.size(); ++i) {
-			MPI_Recv(statRcv, nProcesses, MPI_INT, 
-						kids[i], TERMINATION_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-			for (int i = 0; i < nProcesses; ++i) {
-				if (statRcv[i] > 0) {
-					stat[i] = statRcv[i];
-				}
-			}
-		}
-		free(statRcv);
-		FILE * f_stat = fopen(argv[3], "w");
-		// write in statistica.out:
-		for (int i = 0; i < nProcesses; ++i) {
-			fprintf(f_stat, "%d: %d\n", i, stat[i]); 
-		}
-		fclose(f_stat);
-
-	} else {
-		int nr_neigh = 0;
 				for (int i = 0; i < nProcesses; ++i) {
 					if (statRcv[i] > 0) {
 						stat[i] = statRcv[i];
@@ -481,7 +404,7 @@ int main(int argc, char * argv[]) {
 				}
 			}
 			free(statRcv);
-			// Send the statistics to my parent
+			// Send the statistics to this node's parent
 			MPI_Send(stat, nProcesses, MPI_INT, parent[rank], TERMINATION_TAG, MPI_COMM_WORLD);
 		}
 	}
