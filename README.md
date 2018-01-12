@@ -7,10 +7,10 @@ For linux, ubuntu execute:
 	sudo apt-get install libopenmpi-dev openmpi-bin openmpi-doc openmpi-common
 
 
-#Compile:
-	mpic++ src.cpp -o filtru -Wall
-#Run:
-	mpirun -np 12 filtru topologie1.in imagini.in statistica.out
+### Compile:
+	mpic++ src.cpp -o filter -Wall
+### Run:
+	mpirun -np 12 filter topology1.in images.in statistics.out
 	or
-	mpirun -np 29 filtru topologie2.in imagini.in statistica.out
+	mpirun -np 29 filter topology2.in images.in statistics.out
 
